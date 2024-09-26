@@ -5,13 +5,9 @@ import numpy as np
 import pandas as pd
 import math
 from matplotlib import pyplot as plt
-
-
 #Since both datasets have continuous features you will implement decision trees that have binary splits. 
 #For determining the optimal threshold for splitting you will need to search over all possible thresholds for
 #a given feature (refer to class notes and discussion for an efficient search strategy). Use information gain to measure node impurity in your implementation.
-
-
 #Growing Decision Trees
 #Instead of growing full trees, you will use an early stopping strategy. To this end, wewill impose a limit on the minimum number 
 #of instances at a leaf node, let thisthreshold be denoted as nmin, where nmin is described as a percentage relative to thesize 
@@ -23,6 +19,8 @@ from matplotlib import pyplot as plt
 iris_df = pd.read_csv("iris.csv", names=["sepal_length", "sepal_width", "petal_length", "petal_width", "class"])
 with pd.option_context('future.no_silent_downcasting', True):
     iris_df= iris_df.replace({'Iris-setosa':0, 'Iris-versicolor': 1, 'Iris-virginica': 2}).infer_objects()
+X_iris = iris_df.drop(columns=["class"]).values  # All columns except "class"
+y_iris = iris_df["class"].values 
 
 # Decision Tree Function Explanations
 ## Node Class
@@ -33,6 +31,7 @@ class TreeNode:
         self.left = left
         self.right = right
         self.value = value
+        self. predict_val= None
 
 ## DecisionTree Class
 #This class implements the entire decision tree algorithm.
@@ -42,8 +41,8 @@ class DecisionTree():
     Training: Use "train" function with train set features and labels
     Predicting: Use "predict" function with test set features"""
 
-    def __init__(self, min_samples_leaf=1, min_information_gain=0.0)
-        self.min_samples_leaf = min_samples_leaf
+    def __init__(self, min_samples_split, min_information_gain=0.0)
+        self.min_samples_split = min_samples_split
         self.min_information_gain = min_information_gain
         self.root = None
 
@@ -106,65 +105,43 @@ class DecisionTree():
 
     def build_tree(self, X, y):
         if len(np.unique(y)) == 1 or X.shape[0] < self.min_samples_split:
-            return TreeNode(value=self.most_occuring_label(y))
+            obj1=TreeNode(value=self.most_occuring_label(y))
+            obj1.leaf = True
+            return obj1
         best_feature, best_threshold = self.best_split(X, y)
         if best_feature is None:
             return TreeNode(value=self.most_occuring_label(y))
         left_side = X[:, best_feature] <= best_threshold
         right_side = X[:, best_feature] > best_threshold
-        left_node = self.build_tree_tree(X[left_side], y[left_side])
+        left_node = self.build_tree(X[left_side], y[left_side])
         right_node = self.build_tree(X[right_side], y[right_side])
         return TreeNode(feature=best_feature, threshold=best_threshold, left=left_node, right=right_node)
 
-    def _predict_one_sample(self, X: np.array) -> np.array:
-        """Returns prediction for 1 dim array"""
-        node = self.tree 
-        # Finds the leaf which X belongs
-        while node:
-            pred_probs = node.prediction_probs
-            if X[node.feature_idx] < node.feature_val:
-                node = node.left
-            else:
-                node = node.right
+    def predict_one_row(self, node, row):
+        if Treenode.value is not None:
+            return Treenode.value
+        if row[node.feature] <= Treenode.threshold:
+            return self.predict_one_row(node.left, row)
+        return self.predict_one_row(node.right, row)
 
-        return pred_probs
+    def predict(self, X): 
+        y_pred = [self.predict_one_row(self.root, row) for row in X]
+        return np.array(y_pred)
+    
+    def cross_validation_accuracy(tree, X, y, k=10):
+        kfolds = KFold(k=10, random_state=None, shuffle=True)
+        accuracies = []
+        for train, test in kf.split(X):
+            X_train, X_test = X[train], X[test]
+            y_train, y_test = y[train], y[test]
+            tree.root = tree.build_tree(X_train, y_train)
+            y_pred = tree.predict(X_test)
+            accuracies.append(accuracy_score(y_test, y_pred))
+        return np.mean(accuracies), np.std(accuracies)
 
-    def train(self, X_train: np.array, Y_train: np.array) -> None:
-        """
-        Trains the model with given X and Y datasets
-        """
-        # Concat features and labels
-        self.labels_in_train = np.unique(Y_train)
-        train_data = np.concatenate((X_train, np.reshape(Y_train, (-1, 1))), axis=1)
-
-        # Start creating the tree
-        self.tree = self._create_tree(data=train_data, current_depth=0)
-
-        # Calculate feature importance
-        self.feature_importances = dict.fromkeys(range(X_train.shape[1]), 0)
-        self._calculate_feature_importance(self.tree)
-        # Normalize the feature importance values
-        self.feature_importances = {k: v / total for total in (sum(self.feature_importances.values()),) for k, v in self.feature_importances.items()}
-
-    def predict_proba(self, X_set: np.array) -> np.array:
-        """Returns the predicted probs for a given data set"""
-        pred_probs = np.apply_along_axis(self._predict_one_sample, 1, X_set)
-        return pred_probs
-
-    def predict(self, X_set: np.array) -> np.array:
-        """Returns the predicted labels for a given data set"""
-
-        pred_probs = self.predict_proba(X_set)
-        preds = np.argmax(pred_probs, axis=1)
-        
-        return preds    
-        
-    def _print_recursive(self, node: TreeNode, level=0) -> None:
-        if node != None:
-            self._print_recursive(node.left, level + 1)
-            print('    ' * 4 * level + '-> ' + node.node_def())
-            self._print_recursive(node.right, level + 1)
-
-    def print_tree(self) -> None:
-        self._print_recursive(node=self.tree)         
-
+#Running the code
+n_min_values = [5, 10, 15, 20]
+for n_min in n_min_values:
+    tree = DecisionTree(min_samples_split=n_min)
+    mean_acc, std_acc = cross_validation_accuracy(tree, X_iris, y_iris, k=10)
+    print(f"Iris - n_min: {n_min}, Accuracy: {mean_acc:.3f}, Std: {std_acc:.3f}")
