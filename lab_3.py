@@ -26,18 +26,13 @@ with pd.option_context('future.no_silent_downcasting', True):
 
 # Decision Tree Function Explanations
 ## Node Class
-class TreeNode():
-    def __init__(self, leaf, decision_boundary data, feature, feature_val, prediction_probs, information_gain) -> None:
-        #self.data = data
+class TreeNode:
+    def __init__(self, feature=None, threshold=None, left=None, right=None, value=None):
         self.feature = feature
-        self.feature_val = feature_val
-        self.prediction_probs = prediction_probs
-        self.information_gain = information_gain
-        #self.feature_importance = self.data.shape[0] * self.information_gain
-        self.left = None
-        self.right = None
-        self.leaf = False
-        self.decision_boundary = decision_boundary
+        self.threshold = threshold
+        self.left = left
+        self.right = right
+        self.value = value
 
 ## DecisionTree Class
 #This class implements the entire decision tree algorithm.
@@ -55,7 +50,12 @@ class DecisionTree():
     def entropy(self, y_1) -> float:
         counts = np.bincount(y_1)
         probabilities = counts / len(y_1)
-        return -np.sum([p * np.log2(p) for p in probabilities if p > 0])
+        total_sum = 0
+        for p in probabilities:
+            if p > 0:
+                total_sum += p * np.log2(p)
+        result = -total_sum
+        return result
 
     def information_gain(self, X_column, threshold, y_1):
         parent_entropy = self.entropy(y_1)
@@ -70,9 +70,9 @@ class DecisionTree():
         child_entropy = (n_left / n) * left_entropy + (n_right / n) * right_entropy
         return parent_entropy - child_entropy
 
-    def choose_best_split(self, X, y):
-        best_gain = -1
-        split_idx, split_threshold = None, None
+    def best_split(self, X, y):
+        best = -1
+        split_id, split_threshold = None, None
         for feature_name in range(X.shape[1]):
             #get all values for each feature 
             X_column = X[:, feature_name]
@@ -81,36 +81,44 @@ class DecisionTree():
             for threshold in thresholds:
                 #calculate the gain to determine which one will it be the next feature
                 gain = self.information_gain(X_column, threshold, y)
-                if gain > best_gain:
-                    best_gain = gain
-                    split_idx = feature_name
+                if gain > best:
+                    best = gain
+                    split_id = feature_name
                     split_threshold = threshold
-        return split_idx, split_threshold  
+        return split_id, split_threshold  
 
     def most_occuring_label(self, y):
-        counter = Counter(y)
-        return counter.most_common(1)[0][0] 
+        label_counts = {}
+        most_frequent_label = None
+        max_count = -1
+        # Count the occurrences of each label in y
+        for label in y:
+            if label in label_counts:
+                label_counts[label] += 1
+            else:
+                label_counts[label] = 1
+        # Find the label with the highest count
+        for label1, count in label_counts.items():
+            if count > max_count:
+                max_count = count
+                most_frequent_label = label1
+        return most_frequent_label 
 
-    def _create_tree(self, X, y):
-        """
-        Recursive, depth first tree creation algorithm
-        """
+    def build_tree(self, X, y):
         if len(np.unique(y)) == 1 or X.shape[0] < self.min_samples_split:
-            return Node(value=self.most_occuring_label(y))
-
-        best_feature, best_threshold = self.choose_best_split(X, y)
+            return TreeNode(value=self.most_occuring_label(y))
+        best_feature, best_threshold = self.best_split(X, y)
         if best_feature is None:
-            return Node(value=self.most_occuring_label(y))
+            return TreeNode(value=self.most_occuring_label(y))
+        left_side = X[:, best_feature] <= best_threshold
+        right_side = X[:, best_feature] > best_threshold
+        left_node = self.build_tree_tree(X[left_side], y[left_side])
+        right_node = self.build_tree(X[right_side], y[right_side])
+        return TreeNode(feature=best_feature, threshold=best_threshold, left=left_node, right=right_node)
 
-        left_mask = X[:, best_feature] <= best_threshold
-        right_mask = X[:, best_feature] > best_threshold
-        left_node = self._create_tree(X[left_mask], y[left_mask])
-        right_node = self._create_tree(X[right_mask], y[right_mask])
-        return Node(feature=best_feature, threshold=best_threshold, left=left_node, right=right_node)
-    
     def _predict_one_sample(self, X: np.array) -> np.array:
         """Returns prediction for 1 dim array"""
-        node = self.tree
+        node = self.tree 
         # Finds the leaf which X belongs
         while node:
             pred_probs = node.prediction_probs
@@ -125,7 +133,6 @@ class DecisionTree():
         """
         Trains the model with given X and Y datasets
         """
-
         # Concat features and labels
         self.labels_in_train = np.unique(Y_train)
         train_data = np.concatenate((X_train, np.reshape(Y_train, (-1, 1))), axis=1)
