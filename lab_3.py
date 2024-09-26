@@ -85,64 +85,32 @@ class DecisionTree():
                     best_gain = gain
                     split_idx = feature_name
                     split_threshold = threshold
-        return split_idx, split_threshold   
+        return split_idx, split_threshold  
 
+    def most_occuring_label(self, y):
+        counter = Counter(y)
+        return counter.most_common(1)[0][0] 
 
-    def _find_label_probs(self, data: np.array) -> np.array:
-
-        labels_as_integers = data[:,-1].astype(int)
-        # Calculate the total number of labels
-        total_labels = len(labels_as_integers)
-        # Calculate the ratios (probabilities) for each label
-        label_probabilities = np.zeros(len(self.labels_in_train), dtype=float)
-
-        # Populate the label_probabilities array based on the specific labels
-        for i, label in enumerate(self.labels_in_train):
-            label_index = np.where(labels_as_integers == i)[0]
-            if len(label_index) > 0:
-                label_probabilities[i] = len(label_index) / total_labels
-
-        return label_probabilities
-
-    def _create_tree(self, data: np.array, current_depth: int) -> TreeNode:
+    def _create_tree(self, X, y):
         """
         Recursive, depth first tree creation algorithm
         """
+        if len(np.unique(y)) == 1 or X.shape[0] < self.min_samples_split:
+            return Node(value=self.most_occuring_label(y))
 
-        # Check if the max depth has been reached (stopping criteria)
-        if current_depth > self.max_depth:
-            return None
-        
-        # Find best split
-        split_1_data, split_2_data, split_feature_idx, split_feature_val, split_entropy = self._find_best_split(data)
-        
-        # Find label probs for the node
-        label_probabilities = self._find_label_probs(data)
+        best_feature, best_threshold = self.choose_best_split(X, y)
+        if best_feature is None:
+            return Node(value=self.most_occuring_label(y))
 
-        # Calculate information gain
-        node_entropy = self._entropy(label_probabilities)
-        information_gain = node_entropy - split_entropy
-        
-        # Create node
-        node = TreeNode(data, split_feature_idx, split_feature_val, label_probabilities, information_gain)
-
-        # Check if the min_samples_leaf has been satisfied (stopping criteria)
-        if self.min_samples_leaf > split_1_data.shape[0] or self.min_samples_leaf > split_2_data.shape[0]:
-            return node
-        # Check if the min_information_gain has been satisfied (stopping criteria)
-        elif information_gain < self.min_information_gain:
-            return node
-
-        current_depth += 1
-        node.left = self._create_tree(split_1_data, current_depth)
-        node.right = self._create_tree(split_2_data, current_depth)
-        
-        return node
+        left_mask = X[:, best_feature] <= best_threshold
+        right_mask = X[:, best_feature] > best_threshold
+        left_node = self._create_tree(X[left_mask], y[left_mask])
+        right_node = self._create_tree(X[right_mask], y[right_mask])
+        return Node(feature=best_feature, threshold=best_threshold, left=left_node, right=right_node)
     
     def _predict_one_sample(self, X: np.array) -> np.array:
         """Returns prediction for 1 dim array"""
         node = self.tree
-
         # Finds the leaf which X belongs
         while node:
             pred_probs = node.prediction_probs
@@ -173,9 +141,7 @@ class DecisionTree():
 
     def predict_proba(self, X_set: np.array) -> np.array:
         """Returns the predicted probs for a given data set"""
-
         pred_probs = np.apply_along_axis(self._predict_one_sample, 1, X_set)
-        
         return pred_probs
 
     def predict(self, X_set: np.array) -> np.array:
@@ -193,12 +159,5 @@ class DecisionTree():
             self._print_recursive(node.right, level + 1)
 
     def print_tree(self) -> None:
-        self._print_recursive(node=self.tree)
-
-    def _calculate_feature_importance(self, node):
-        """Calculates the feature importance by visiting each node in the tree recursively"""
-        if node != None:
-            self.feature_importances[node.feature_idx] += node.feature_importance
-            self._calculate_feature_importance(node.left)
-            self._calculate_feature_importance(node.right)         
+        self._print_recursive(node=self.tree)         
 
